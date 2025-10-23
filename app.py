@@ -1,9 +1,23 @@
+import json
+import os
 from flask import Flask, request, jsonify, render_template_string
 
 app = Flask(__name__)
 
-# In-memory storage for comments
-comments = []
+# JSON file to persist comments
+COMMENTS_FILE = "comments.json"
+
+# Load comments from file if exists
+if os.path.exists(COMMENTS_FILE):
+    with open(COMMENTS_FILE, "r") as f:
+        comments = json.load(f)
+else:
+    comments = []
+
+# Helper function to save comments to file
+def save_comments():
+    with open(COMMENTS_FILE, "w") as f:
+        json.dump(comments, f)
 
 # HTML template (inline for simplicity)
 HTML_TEMPLATE = """
@@ -17,7 +31,7 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
-    <h2>comments</h2>
+    <h2>Comments</h2>
 
     <input type="text" id="commentInput" placeholder="Add a comment">
     <button onclick="addComment()">Add</button>
@@ -58,7 +72,7 @@ HTML_TEMPLATE = """
             const newText = prompt("Edit comment:");
             if (newText === null || newText.trim() === "") return;
             await fetch('/comments/' + index, {
-                method: 'PUT',
+                method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ comment: newText })
             });
@@ -82,40 +96,51 @@ HTML_TEMPLATE = """
 def home():
     return render_template_string(HTML_TEMPLATE)
 
-# API route – get all comments
+# GET all comments
 @app.route("/comments", methods=["GET"])
 def get_comments():
     return jsonify(comments)
 
-# API route – add a comment
+# GET single comment by index
+@app.route("/comments/<int:index>", methods=["GET"])
+def get_comment(index):
+    if 0 <= index < len(comments):
+        return jsonify({"comment": comments[index]})
+    return jsonify({"error": "Invalid index"}), 404
+
+# Add a comment
 @app.route("/comments", methods=["POST"])
 def add_comment():
     data = request.get_json()
     comment = data.get("comment")
     if comment:
         comments.append(comment)
+        save_comments()  # save to file
         return jsonify({"message": "Comment added"}), 201
     return jsonify({"error": "No comment provided"}), 400
 
-# API route – edit/update a comment
-@app.route("/comments/<int:index>", methods=["PUT"])
+# Edit/update a comment
+@app.route("/comments/<int:index>", methods=["PUT", "PATCH"])
 def update_comment(index):
     if 0 <= index < len(comments):
         data = request.get_json()
         comment = data.get("comment")
         if comment:
             comments[index] = comment
+            save_comments()  # save edits to file
             return jsonify({"message": "Comment updated"})
         return jsonify({"error": "No comment provided"}), 400
     return jsonify({"error": "Invalid index"}), 404
 
-# API route –delete a comment
+# Delete a comment
 @app.route("/comments/<int:index>", methods=["DELETE"])
 def delete_comment(index):
     if 0 <= index < len(comments):
         removed = comments.pop(index)
+        save_comments()  # save after deletion
         return jsonify({"message": f"Comment '{removed}' deleted"})
     return jsonify({"error": "Invalid index"}), 404
 
+#Added the main function
 if __name__ == "__main__":
     app.run(debug=True)
